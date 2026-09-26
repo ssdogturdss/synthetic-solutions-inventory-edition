@@ -152,7 +152,10 @@ jest.mock('@/contexts/AuthContext', () => ({
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: '1' }),
   useRouter: () => ({ push: jest.fn(), back: jest.fn() }),
-  useNavigation: () => ({ setOptions: jest.fn() }),
+  useNavigation: () => ({
+    setOptions: jest.fn(),
+    addListener: jest.fn(() => jest.fn()),
+  }),
 }));
 
 // ---------------------------------------------------------------------------

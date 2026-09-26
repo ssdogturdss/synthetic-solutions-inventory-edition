@@ -151,7 +151,10 @@ jest.mock('@/contexts/AuthContext', () => ({
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: '1' }),
   useRouter: () => ({ push: jest.fn(), back: jest.fn() }),
-  useNavigation: () => ({ setOptions: jest.fn() }),
+  useNavigation: () => ({
+    setOptions: jest.fn(),
+    addListener: jest.fn(() => jest.fn()),
+  }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -203,9 +206,9 @@ describe('Inventory session — undo toast', () => {
       // Fire a scan for PRODUCT_A
       act(() => { capturedOnScanned?.('BL-001'); });
 
-      // The toast must render its "Undo last scan" accessible button
+      // The toast must render its "Undo" accessible button
       await waitFor(() => {
-        expect(utils.getByLabelText('Undo last scan')).toBeTruthy();
+        expect(utils.getByLabelText('Undo')).toBeTruthy();
       });
     });
 
