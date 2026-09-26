@@ -144,7 +144,11 @@ function serveFileFrom(root, urlPath, res) {
   const filePath = path.resolve(canonicalRoot, `.${path.sep}${decodedPath}`);
   const relativePath = path.relative(canonicalRoot, filePath);
 
-  if (relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
+  if (
+    relativePath === '..' ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  ) {
     res.writeHead(403);
     res.end('Forbidden');
     return true;
@@ -156,6 +160,7 @@ function serveFileFrom(root, urlPath, res) {
   const canonicalFilePath = fs.realpathSync(filePath);
   const canonicalRelativePath = path.relative(canonicalRoot, canonicalFilePath);
   if (
+    canonicalRelativePath === '..' ||
     canonicalRelativePath.startsWith(`..${path.sep}`) ||
     path.isAbsolute(canonicalRelativePath)
   ) {
