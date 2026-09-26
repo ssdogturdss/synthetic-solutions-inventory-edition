@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": [
+    "src",
+    "seed-test-user.ts",
+    "clear-ai-config-key.ts",
+    "snapshot-ai-config.ts",
+    "restore-ai-config.ts",
+    "backdate-e2e-session.ts",
+    "reorder-forecast.test.ts"
+  ]
+}

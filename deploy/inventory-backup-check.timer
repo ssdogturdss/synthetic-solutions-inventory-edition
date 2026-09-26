@@ -1,0 +1,10 @@
+[Unit]
+Description=Hourly inventory backup freshness check
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=inventory-backup-check.service
+
+[Install]
+WantedBy=timers.target

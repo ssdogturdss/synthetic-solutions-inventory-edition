@@ -1,7 +1,5 @@
 # Synthetic Solutions — Inventory Edition
 
-[![CI](https://github.com/ssdogturdss/synthetic-solutions-inventory-edition/actions/workflows/ci.yml/badge.svg)](https://github.com/ssdogturdss/synthetic-solutions-inventory-edition/actions/workflows/ci.yml)
-
 Enterprise chemical inventory management for car wash operations. A **React Native mobile app** (Expo) backed by an **Express REST API** with PostgreSQL, built as a pnpm monorepo.
 
 ---

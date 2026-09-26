@@ -1,0 +1,129 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Synthetic Solutions – Inventory Edition
+#
+# Usage:
+#   1. cp .env.example .env  →  fill in SESSION_SECRET (and XAI_API_KEY if needed)
+#   2. docker compose up --build
+#
+# On first run the `migrate` service applies the database schema automatically.
+# Subsequent runs skip it because Drizzle's push is idempotent.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-inventory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB:       ${POSTGRES_DB:-inventory}
+    volumes:
+      # This volume preserves data across `docker compose down`; see README.md
+      # for the host-side backup/restore procedure and the root-owned systemd
+      # schedule that copies encrypted restic snapshots off-server and checks
+      # their freshness. Compose health does not replace that host check.
+      - postgres_data:/var/lib/postgresql/data
+    # Bind to loopback only — do not expose Postgres to external interfaces
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-inventory} -d ${POSTGRES_DB:-inventory}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── Restored-data verification (manual, opt-in) ─────────────────────────────
+  #
+  # Run this only after restoring the database and while migrate/api are stopped:
+  #   docker compose --profile restore-verify run --rm restore-verify
+  # A successful exit is the gate for the separate `docker compose up -d
+  # migrate api` command. This profile never starts the API itself.
+  restore-verify:
+    image: postgres:16-alpine
+    profiles: [restore-verify]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-inventory}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      PGDATABASE: ${POSTGRES_DB:-inventory}
+      PSQL_BIN: /usr/local/bin/psql
+    volumes:
+      - ./deploy/inventory-restore-verify.sh:/usr/local/bin/inventory-restore-verify:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["/usr/local/bin/inventory-restore-verify"]
+    restart: "no"
+
+  # ── Schema migration (one-shot, runs drizzle-kit push --force) ──────────────
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-inventory}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-inventory}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ── First-run admin seed (profile-gated — only runs when explicitly requested)
+  #
+  # Usage (first deploy only):
+  #   ADMIN_PIN=1234 ADMIN_NAME=Admin docker compose --profile seed run --rm seed
+  #
+  # The service is idempotent — it exits 0 immediately if an admin already exists.
+  seed:
+    build:
+      context: .
+      target: seed
+    profiles: [seed]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-inventory}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-inventory}}
+      # The seed script validates this only when the seed profile is run.
+      # Do not use Compose's required-variable syntax here: Compose evaluates
+      # profile services during normal `docker compose up` as well.
+      ADMIN_PIN:  ${ADMIN_PIN:-}
+      ADMIN_NAME: ${ADMIN_NAME:-Admin}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # ── API Server ───────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PORT:-8080}:8080"
+    environment:
+      PORT:         "8080"
+      NODE_ENV:     production
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-inventory}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-inventory}}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env (openssl rand -hex 32)}
+      XAI_API_KEY:    ${XAI_API_KEY:-}
+      CORS_ORIGIN:    ${CORS_ORIGIN:?Set CORS_ORIGIN in .env to trusted HTTPS origins}
+      BACKUP_STATUS_DIR: /var/lib/inventory-backups
+    volumes:
+      # The API can read only root-owned backup and restore-verification
+      # metadata; it never needs dump contents or credentials.
+      - ${BACKUP_STATUS_DIR:-/var/lib/inventory-backups}:/var/lib/inventory-backups:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/readyz').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data:

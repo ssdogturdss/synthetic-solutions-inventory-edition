@@ -1,0 +1,36 @@
+# Dependencies (reinstalled inside the image)
+node_modules
+**/node_modules
+
+# Build outputs (rebuilt inside the image)
+dist
+**/dist
+*.tsbuildinfo
+
+# Expo / mobile (not part of the API server image)
+artifacts/mobile
+artifacts/mockup-sandbox
+.expo
+.expo-shared
+
+# Replit internals
+.cache
+.local
+.replit
+.replitignore
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# System / editor
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+coverage

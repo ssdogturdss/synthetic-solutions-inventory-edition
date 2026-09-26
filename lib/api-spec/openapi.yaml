@@ -1,0 +1,3362 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Synthetic Solutions Inventory Edition API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: backups
+    description: Backup health metadata
+  - name: notifications
+    description: Push notification registrations and preferences
+  - name: auth
+    description: Authentication
+  - name: stores
+    description: Store management
+  - name: warehouses
+    description: Warehouse management
+  - name: users
+    description: User management
+  - name: categories
+    description: Category management
+  - name: products
+    description: Product/chemical master
+  - name: inventory
+    description: Inventory count sessions
+  - name: receiving
+    description: Receiving inventory
+  - name: chemical-usage
+    description: Online chemical usage tracking
+  - name: reports
+    description: Reporting and analytics
+  - name: ai
+    description: AI assistant and configuration
+  - name: dashboard
+    description: Dashboard summary
+  - name: audit
+    description: Audit logs
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /backup/health:
+    get:
+      operationId: getBackupHealth
+      tags: [backups]
+      summary: Get backup health metadata (admin only)
+      description: Returns backup freshness metadata and the timestamp of the last successful restore verification. Missing, unreadable, malformed, or oversized status records are reported as unknown with recovery guidance. Restored database contents, dump contents, status-file contents, and credentials are never returned.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Backup health metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupHealth"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /backup/events:
+    post:
+      operationId: submitBackupPushEvent
+      tags: [backups]
+      summary: Submit a backup alert state transition
+      description: Machine-to-machine endpoint used by the backup host. The shared secret is accepted only in a request header and is never returned.
+      parameters:
+        - in: header
+          name: X-Backup-Push-Token
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BackupPushEventInput"
+      responses:
+        "202":
+          description: Event accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackupPushEventAccepted"
+        "400":
+          description: Invalid event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid shared token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Backup event intake is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifications/devices:
+    get:
+      operationId: getNotificationDevices
+      tags: [notifications]
+      summary: List the current user's push registrations
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Registered devices and available browser push capability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationDeviceList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: registerNotificationDevice
+      tags: [notifications]
+      summary: Register or update a push registration for the current device
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationDeviceRegistrationInput"
+      responses:
+        "201":
+          description: Device registration saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationDeviceResponse"
+        "400":
+          description: Unsupported platform or invalid registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /notifications/devices/{id}:
+    patch:
+      operationId: updateNotificationDevice
+      tags: [notifications]
+      summary: Update alert preferences for a registered device
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationDevicePreferencesUpdateInput"
+      responses:
+        "200":
+          description: Preferences updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationDeviceResponse"
+        "400":
+          description: Invalid device ID or preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Device registration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: removeNotificationDevice
+      tags: [notifications]
+      summary: Remove a push registration owned by the current user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Device registration removed
+        "400":
+          description: Invalid device ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Device registration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Auth
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: PIN login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Stores
+  /stores:
+    get:
+      operationId: listStores
+      tags: [stores]
+      summary: List stores
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of stores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Store"
+    post:
+      operationId: createStore
+      tags: [stores]
+      summary: Create store (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreInput"
+      responses:
+        "201":
+          description: Store created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Store"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /stores/{id}:
+    get:
+      operationId: getStore
+      tags: [stores]
+      summary: Get store by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Store"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    patch:
+      operationId: updateStore
+      tags: [stores]
+      summary: Update store (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreUpdate"
+      responses:
+        "200":
+          description: Updated store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Store"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteStore
+      tags: [stores]
+      summary: Delete store (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Warehouses
+  /warehouses:
+    get:
+      operationId: listWarehouses
+      tags: [warehouses]
+      summary: List warehouses
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of warehouses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Warehouse"
+    post:
+      operationId: createWarehouse
+      tags: [warehouses]
+      summary: Create warehouse (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WarehouseInput"
+      responses:
+        "201":
+          description: Warehouse created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /warehouses/{id}:
+    get:
+      operationId: getWarehouse
+      tags: [warehouses]
+      summary: Get warehouse by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Warehouse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateWarehouse
+      tags: [warehouses]
+      summary: Update warehouse (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WarehouseUpdate"
+      responses:
+        "200":
+          description: Updated warehouse
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteWarehouse
+      tags: [warehouses]
+      summary: Delete warehouse (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Users
+  /warehouse-movements:
+    get:
+      operationId: listWarehouseMovements
+      tags: [warehouses]
+      summary: List warehouse stock movements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+        - name: productId
+          in: query
+          schema:
+            type: integer
+        - name: movementType
+          in: query
+          schema:
+            type: string
+            enum: [receipt, transfer, adjustment]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Warehouse stock movement ledger
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WarehouseMovement"
+    post:
+      operationId: createWarehouseMovement
+      tags: [warehouses]
+      summary: Record a warehouse receipt, transfer, or adjustment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WarehouseMovementInput"
+      responses:
+        "201":
+          description: Movement recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WarehouseMovementResponse"
+
+  /warehouse-transfers:
+    post:
+      operationId: createWarehouseTransfer
+      tags: [warehouses]
+      summary: Transfer stock from a warehouse to a store (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WarehouseTransferInput"
+      responses:
+        "201":
+          description: Transfer created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WarehouseTransferResponse"
+        "409":
+          description: Insufficient stock
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /warehouses/{id}/movements:
+    get:
+      operationId: listWarehouseMovementsByWarehouse
+      tags: [warehouses]
+      summary: List movements for a warehouse
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Warehouse stock movement ledger
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WarehouseMovement"
+    post:
+      operationId: createWarehouseMovementForWarehouse
+      tags: [warehouses]
+      summary: Record a movement for a warehouse
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WarehouseMovementInput"
+      responses:
+        "201":
+          description: Movement recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WarehouseMovementResponse"
+
+  /warehouses/{id}/stock:
+    get:
+      operationId: getWarehouseStock
+      tags: [warehouses]
+      summary: Get current warehouse stock (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Current stock
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WarehouseStockLine"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List users (admin only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserProfile"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create user (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get user by ID (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update user (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete user (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/{id}/reset-pin:
+    post:
+      operationId: resetUserPin
+      tags: [users]
+      summary: Reset user PIN (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPinInput"
+      responses:
+        "200":
+          description: PIN reset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Categories
+  /categories:
+    get:
+      operationId: listCategories
+      tags: [categories]
+      summary: List categories
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+    post:
+      operationId: createCategory
+      tags: [categories]
+      summary: Create category (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryInput"
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+
+  /categories/{id}:
+    get:
+      operationId: getCategory
+      tags: [categories]
+      summary: Get category by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateCategory
+      tags: [categories]
+      summary: Update category (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryUpdate"
+      responses:
+        "200":
+          description: Updated category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+    delete:
+      operationId: deleteCategory
+      tags: [categories]
+      summary: Delete category (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # Products
+  /products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List products
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: activeOnly
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create product (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "201":
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+  /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [products]
+      summary: Get product by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update product (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdate"
+      responses:
+        "200":
+          description: Updated product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      summary: Delete product (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # Inventory Sessions
+  /inventory-sessions:
+    get:
+      operationId: listInventorySessions
+      tags: [inventory]
+      summary: List inventory sessions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, finalized]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of inventory sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventorySession"
+    post:
+      operationId: createInventorySession
+      tags: [inventory]
+      summary: Open a new inventory count session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventorySessionInput"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySession"
+
+  /inventory-sessions/{id}:
+    get:
+      operationId: getInventorySession
+      tags: [inventory]
+      summary: Get inventory session with items
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Inventory session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySessionDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /inventory-sessions/{id}/finalize:
+    post:
+      operationId: finalizeInventorySession
+      tags: [inventory]
+      summary: Finalize inventory session and compute usage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Finalized session with usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySessionDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /inventory-sessions/{id}/items:
+    get:
+      operationId: listInventorySessionItems
+      tags: [inventory]
+      summary: List items for a session
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Session items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventorySessionItem"
+    put:
+      operationId: upsertInventorySessionItems
+      tags: [inventory]
+      summary: Upsert multiple items in a session (bulk)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryItemsBulkInput"
+      responses:
+        "200":
+          description: Updated items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventorySessionItem"
+
+  /inventory-sessions/{id}/items/admin-edit:
+    put:
+      operationId: adminEditInventorySessionItems
+      tags: [inventory]
+      summary: Admin — edit items in any session, including finalized ones
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryItemsBulkInput"
+      responses:
+        "200":
+          description: Updated session detail with recomputed usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySessionDetail"
+
+  # Receiving Records
+  /receiving-records:
+    get:
+      operationId: listReceivingRecords
+      tags: [receiving]
+      summary: List receiving records
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of receiving records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReceivingRecord"
+    post:
+      operationId: createReceivingRecord
+      tags: [receiving]
+      summary: Create receiving record
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceivingRecordInput"
+      responses:
+        "201":
+          description: Receiving record created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceivingRecord"
+
+  /receiving-records/{id}:
+    get:
+      operationId: getReceivingRecord
+      tags: [receiving]
+      summary: Get receiving record with items
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Receiving record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceivingRecordDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Chemical Usage
+  /chemical-usage:
+    get:
+      operationId: listChemicalUsage
+      tags: [chemical-usage]
+      summary: List chemical usage entries
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, consumed, returned]
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Chemical usage entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChemicalUsage"
+    post:
+      operationId: createChemicalUsage
+      tags: [chemical-usage]
+      summary: Record chemical usage (pull)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChemicalUsageInput"
+      responses:
+        "201":
+          description: Chemical usage recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChemicalUsage"
+
+  /chemical-usage/{id}:
+    patch:
+      operationId: updateChemicalUsage
+      tags: [chemical-usage]
+      summary: Update chemical usage status (consumed/returned)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChemicalUsageUpdate"
+      responses:
+        "200":
+          description: Updated entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChemicalUsage"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Reports
+  /reports/usage:
+    get:
+      operationId: getUsageReport
+      tags: [reports]
+      summary: Usage report by date range / store / category
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+        - name: productId
+          in: query
+          schema:
+            type: integer
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, quarterly, yearly]
+      responses:
+        "200":
+          description: Usage report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageReport"
+
+  /reports/inventory-valuation:
+    get:
+      operationId: getInventoryValuation
+      tags: [reports]
+      summary: Current inventory valuation per store
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Inventory valuation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryValuationReport"
+
+  /reports/below-minimum:
+    get:
+      operationId: getBelowMinimumReport
+      tags: [reports]
+      summary: Products below minimum level
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Below minimum items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockAlert"
+
+  /reports/overstocked:
+    get:
+      operationId: getOverstockedReport
+      tags: [reports]
+      summary: Products above maximum level
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+        - name: warehouseId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Overstocked items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StockAlert"
+
+  /reports/top-consumers:
+    get:
+      operationId: getTopConsumersReport
+      tags: [reports]
+      summary: Top consuming products and stores
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Top consumers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopConsumersReport"
+
+  /reports/store-rankings:
+    get:
+      operationId: getStoreRankingsReport
+      tags: [reports]
+      summary: Store usage rankings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Store rankings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StoreRanking"
+
+  # AI
+  /ai/config:
+    get:
+      operationId: getAiConfig
+      tags: [ai]
+      summary: Get AI configuration (admin only, key never returned)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: AI configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiConfig"
+    put:
+      operationId: updateAiConfig
+      tags: [ai]
+      summary: Update AI configuration (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiConfigInput"
+      responses:
+        "200":
+          description: Updated AI config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiConfig"
+
+  /ai/test:
+    post:
+      operationId: testAiConfig
+      tags: [ai]
+      summary: Test AI provider connection without saving (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiTestInput"
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiTestResult"
+
+  /ai/report:
+    post:
+      operationId: generateAiReport
+      tags: [ai]
+      summary: Generate a structured AI inventory report
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiReportInput"
+      responses:
+        "200":
+          description: Generated AI report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiReportResponse"
+        "502":
+          description: AI provider error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: AI not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai/chat:
+    post:
+      operationId: aiChat
+      tags: [ai]
+      summary: Send message to AI assistant
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiChatInput"
+      responses:
+        "200":
+          description: AI response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiReply"
+        "503":
+          description: AI not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # Dashboard
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Dashboard summary for the current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  # Audit Logs
+  /audit-logs:
+    get:
+      operationId: listAuditLogs
+      tags: [audit]
+      summary: List audit logs (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: query
+          schema:
+            type: integer
+        - name: storeId
+          in: query
+          schema:
+            type: integer
+        - name: entityType
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    BackupHealth:
+      type: object
+      required: [overallStatus, maxAgeHours, latestRun, localCopy, offsiteCopy, latestCheck, lastRestoreDrillAt, recoveryGuidance]
+      properties:
+        overallStatus:
+          type: string
+          enum: [healthy, degraded, unknown]
+        maxAgeHours:
+          type: integer
+          minimum: 1
+        latestRun:
+          $ref: "#/components/schemas/BackupRunMetadata"
+        localCopy:
+          $ref: "#/components/schemas/BackupCopyMetadata"
+        offsiteCopy:
+          $ref: "#/components/schemas/BackupCopyMetadata"
+        latestCheck:
+          $ref: "#/components/schemas/BackupCheckMetadata"
+        lastRestoreDrillAt:
+          type: ["string", "null"]
+          format: date-time
+        recoveryGuidance:
+          type: string
+
+    BackupRunMetadata:
+      type: object
+      required: [status, finishedAt, message]
+      properties:
+        status:
+          type: string
+          enum: [success, failure, unknown]
+        finishedAt:
+          type: ["string", "null"]
+          format: date-time
+        message:
+          type: ["string", "null"]
+
+    BackupCopyMetadata:
+      type: object
+      required: [status, ageSeconds]
+      properties:
+        status:
+          type: string
+          enum: [fresh, stale, missing, unknown]
+        ageSeconds:
+          type: ["integer", "null"]
+          minimum: 0
+
+    BackupCheckMetadata:
+      type: object
+      required: [status, finishedAt, ageSeconds]
+      properties:
+        status:
+          type: string
+          enum: [fresh, stale, unknown]
+        finishedAt:
+          type: ["string", "null"]
+          format: date-time
+        ageSeconds:
+          type: ["integer", "null"]
+          minimum: 0
+
+    BackupPushEventInput:
+      type: object
+      additionalProperties: false
+      required: [issue, state]
+      properties:
+        issue:
+          type: string
+          enum: [backup_run, backup_freshness]
+        state:
+          type: string
+          enum: [alert, healthy]
+
+    BackupPushEventAccepted:
+      type: object
+      required: [accepted]
+      properties:
+        accepted:
+          type: boolean
+          const: true
+
+    NotificationPreferencesInput:
+      type: object
+      additionalProperties: false
+      required: [backupEnabled, inventoryEnabled]
+      properties:
+        backupEnabled:
+          type: boolean
+        inventoryEnabled:
+          type: boolean
+
+    NotificationDevicePreferencesUpdateInput:
+      type: object
+      additionalProperties: false
+      required: [preferences]
+      properties:
+        preferences:
+          $ref: "#/components/schemas/NotificationPreferencesInput"
+
+    ExpoPushRegistration:
+      type: object
+      additionalProperties: false
+      required: [expoPushToken]
+      properties:
+        expoPushToken:
+          type: string
+          pattern: "^(Expo|Exponent)PushToken\\[[^\\]]+\\]$"
+
+    WebPushRegistration:
+      type: object
+      additionalProperties: false
+      required: [endpoint, keys]
+      properties:
+        endpoint:
+          type: string
+          pattern: "^https://"
+        keys:
+          type: object
+          additionalProperties: false
+          required: [p256dh, auth]
+          properties:
+            p256dh:
+              type: string
+            auth:
+              type: string
+
+    NotificationDeviceRegistrationInput:
+      type: object
+      additionalProperties: false
+      required: [platform, subscription, preferences]
+      properties:
+        platform:
+          type: string
+          enum: [expo, web]
+        subscription:
+          oneOf:
+            - $ref: "#/components/schemas/ExpoPushRegistration"
+            - $ref: "#/components/schemas/WebPushRegistration"
+        preferences:
+          $ref: "#/components/schemas/NotificationPreferencesInput"
+
+    NotificationDevice:
+      type: object
+      required: [id, platform, backupEnabled, inventoryEnabled, isActive, createdAt]
+      properties:
+        id:
+          type: integer
+        platform:
+          type: string
+          enum: [expo, web]
+        backupEnabled:
+          type: boolean
+        inventoryEnabled:
+          type: boolean
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    NotificationCapabilities:
+      type: object
+      required: [webPushConfigured, webPushPublicKey]
+      properties:
+        webPushConfigured:
+          type: boolean
+        webPushPublicKey:
+          type: ["string", "null"]
+
+    NotificationDeviceList:
+      type: object
+      required: [devices, capabilities]
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationDevice"
+        capabilities:
+          $ref: "#/components/schemas/NotificationCapabilities"
+
+    NotificationDeviceResponse:
+      type: object
+      required: [device]
+      properties:
+        device:
+          $ref: "#/components/schemas/NotificationDevice"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    # Auth
+    LoginInput:
+      type: object
+      required: [pin]
+      properties:
+        userId:
+          type: ["integer", "null"]
+          description: User ID (optional if providing name)
+        name:
+          type: ["string", "null"]
+          description: User name for lookup
+        pin:
+          type: string
+          description: PIN code
+
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+
+    UserProfile:
+      type: object
+      required: [id, name, role, isActive]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        role:
+          type: string
+          enum: [admin, store_user]
+        storeId:
+          type: ["integer", "null"]
+        biometricEnabled:
+          type: boolean
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    # Store
+    Store:
+      type: object
+      required: [id, name, storeNumber, status, isActive]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        storeNumber:
+          type: string
+        manager:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        zip:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        region:
+          type: ["string", "null"]
+        district:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive, disabled]
+        latitude:
+          type: ["string", "null"]
+        longitude:
+          type: ["string", "null"]
+        inventorySchedule:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    StoreInput:
+      type: object
+      required: [name, storeNumber]
+      properties:
+        name:
+          type: string
+        storeNumber:
+          type: string
+        manager:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zip:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        region:
+          type: string
+        district:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, disabled]
+        latitude:
+          type: string
+        longitude:
+          type: string
+        inventorySchedule:
+          type: string
+        notes:
+          type: string
+
+    StoreUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        storeNumber:
+          type: string
+        manager:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zip:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        region:
+          type: string
+        district:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, disabled]
+        latitude:
+          type: string
+        longitude:
+          type: string
+        inventorySchedule:
+          type: string
+        notes:
+          type: string
+        isActive:
+          type: boolean
+
+    # Warehouse
+    Warehouse:
+      type: object
+      required: [id, name, warehouseNumber, status, isActive]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        warehouseNumber:
+          type: string
+        manager:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        zip:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive, disabled]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    WarehouseInput:
+      type: object
+      required: [name, warehouseNumber]
+      properties:
+        name:
+          type: string
+        warehouseNumber:
+          type: string
+        manager:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zip:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, disabled]
+
+    WarehouseUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        warehouseNumber:
+          type: string
+        manager:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zip:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, disabled]
+        isActive:
+          type: boolean
+
+    WarehouseMovement:
+      type: object
+      required: [id, warehouseId, productId, quantity, movementType, employeeId, movedAt]
+      properties:
+        id:
+          type: integer
+        warehouseId:
+          type: integer
+        productId:
+          type: integer
+        quantity:
+          type: string
+        movementType:
+          type: string
+          enum: [receipt, transfer, adjustment]
+        transferGroupId:
+          type: ["string", "null"]
+        fromWarehouseId:
+          type: ["integer", "null"]
+        toWarehouseId:
+          type: ["integer", "null"]
+        destinationStoreId:
+          type: ["integer", "null"]
+        receivingRecordId:
+          type: ["integer", "null"]
+        employeeId:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        movedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    WarehouseMovementInput:
+      type: object
+      required: [warehouseId, productId, quantity, movementType]
+      properties:
+        warehouseId:
+          type: integer
+        productId:
+          type: integer
+        quantity:
+          type: string
+        movementType:
+          type: string
+          enum: [receipt, transfer, adjustment]
+        fromWarehouseId:
+          type: integer
+        toWarehouseId:
+          type: integer
+        receivingRecordId:
+          type: integer
+        notes:
+          type: string
+        movedAt:
+          type: string
+          format: date-time
+
+    WarehouseMovementResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        warehouseId:
+          type: integer
+        productId:
+          type: integer
+        quantity:
+          type: string
+        movementType:
+          type: string
+          enum: [receipt, transfer, adjustment]
+        transferGroupId:
+          type: string
+        movements:
+          type: array
+          items:
+            $ref: "#/components/schemas/WarehouseMovement"
+
+    WarehouseTransferItemInput:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId:
+          type: integer
+        quantity:
+          type: string
+    WarehouseTransferInput:
+      type: object
+      required: [sourceWarehouseId, destinationStoreId, items]
+      properties:
+        sourceWarehouseId:
+          type: integer
+        destinationStoreId:
+          type: integer
+        notes:
+          type: string
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/WarehouseTransferItemInput"
+    WarehouseTransferResponse:
+      type: object
+      required: [transferGroupId, header, receipt, movements]
+      properties:
+        transferGroupId:
+          type: string
+        header:
+          type: object
+          properties:
+            id:
+              type: integer
+        receipt:
+          type: object
+          properties:
+            id:
+              type: integer
+        movements:
+          type: array
+          items:
+            $ref: "#/components/schemas/WarehouseMovement"
+    WarehouseStockLine:
+      type: object
+      required: [warehouseId, productId, quantity]
+      properties:
+        warehouseId:
+          type: integer
+        productId:
+          type: integer
+        quantity:
+          type: string
+        lastCountDate:
+          type: ["string", "null"]
+          format: date-time
+
+    # Users
+    UserInput:
+      type: object
+      required: [name, pin, role]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, store_user]
+        pin:
+          type: string
+          minLength: 4
+          maxLength: 8
+        storeId:
+          type: integer
+        biometricEnabled:
+          type: boolean
+
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, store_user]
+        storeId:
+          type: ["integer", "null"]
+        biometricEnabled:
+          type: boolean
+        isActive:
+          type: boolean
+
+    ResetPinInput:
+      type: object
+      required: [newPin]
+      properties:
+        newPin:
+          type: string
+          minLength: 4
+          maxLength: 8
+
+    # Category
+    Category:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    CategoryUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    # Product
+    Product:
+      type: object
+      required: [id, name, isActive]
+      properties:
+        id:
+          type: integer
+        productNumber:
+          type: ["string", "null"]
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        manufacturer:
+          type: ["string", "null"]
+        categoryId:
+          type: ["integer", "null"]
+        unit:
+          type: ["string", "null"]
+        containerSize:
+          type: ["string", "null"]
+        minLevel:
+          type: ["string", "null"]
+        maxLevel:
+          type: ["string", "null"]
+        cost:
+          type: ["string", "null"]
+        vendor:
+          type: ["string", "null"]
+        barcode:
+          type: ["string", "null"]
+        photoUrl:
+          type: ["string", "null"]
+        safetyNotes:
+          type: ["string", "null"]
+        mixRatio:
+          type: ["string", "null"]
+        application:
+          type: ["string", "null"]
+        storageRequirements:
+          type: ["string", "null"]
+        hazardClassification:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    ProductInput:
+      type: object
+      required: [name]
+      properties:
+        productNumber:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        manufacturer:
+          type: string
+        categoryId:
+          type: integer
+        unit:
+          type: string
+        containerSize:
+          type: string
+        minLevel:
+          type: string
+        maxLevel:
+          type: string
+        cost:
+          type: string
+        vendor:
+          type: string
+        barcode:
+          type: string
+        photoUrl:
+          type: string
+        safetyNotes:
+          type: string
+        mixRatio:
+          type: string
+        application:
+          type: string
+        storageRequirements:
+          type: string
+        hazardClassification:
+          type: string
+
+    ProductUpdate:
+      type: object
+      properties:
+        productNumber:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        manufacturer:
+          type: string
+        categoryId:
+          type: ["integer", "null"]
+        unit:
+          type: string
+        containerSize:
+          type: string
+        minLevel:
+          type: string
+        maxLevel:
+          type: string
+        cost:
+          type: string
+        vendor:
+          type: string
+        barcode:
+          type: string
+        photoUrl:
+          type: string
+        safetyNotes:
+          type: string
+        mixRatio:
+          type: string
+        application:
+          type: string
+        storageRequirements:
+          type: string
+        hazardClassification:
+          type: string
+        isActive:
+          type: boolean
+
+    # Inventory Sessions
+    InventorySession:
+      type: object
+      required: [id, storeId, employeeId, status, startedAt]
+      properties:
+        id:
+          type: integer
+        storeId:
+          type: integer
+        warehouseId:
+          type: ["integer", "null"]
+        employeeId:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        finalizedAt:
+          type: ["string", "null"]
+          format: date-time
+        status:
+          type: string
+          enum: [open, finalized]
+        notes:
+          type: ["string", "null"]
+        itemCount:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    InventorySessionInput:
+      type: object
+      required: [storeId]
+      properties:
+        storeId:
+          type: integer
+        warehouseId:
+          type: integer
+        notes:
+          type: string
+
+    InventorySessionItem:
+      type: object
+      required: [id, sessionId, productId, fullContainers, partialContainers]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        productId:
+          type: integer
+        fullContainers:
+          type: integer
+        partialContainers:
+          type: integer
+        estimatedPercentage:
+          type: ["string", "null"]
+        estimatedGallons:
+          type: ["string", "null"]
+        comments:
+          type: ["string", "null"]
+        photoUrls:
+          type: ["array", "null"]
+          items:
+            type: string
+        voiceNoteUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    InventoryItemInput:
+      type: object
+      required: [productId, fullContainers, partialContainers]
+      properties:
+        productId:
+          type: integer
+        fullContainers:
+          type: integer
+        partialContainers:
+          type: integer
+        estimatedPercentage:
+          type: string
+        estimatedGallons:
+          type: string
+        comments:
+          type: string
+        photoUrls:
+          type: array
+          items:
+            type: string
+        voiceNoteUrl:
+          type: string
+
+    InventoryItemsBulkInput:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryItemInput"
+
+    InventorySessionDetail:
+      type: object
+      required: [id, storeId, employeeId, status, startedAt, items]
+      properties:
+        id:
+          type: integer
+        storeId:
+          type: integer
+        warehouseId:
+          type: ["integer", "null"]
+        employeeId:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        finalizedAt:
+          type: ["string", "null"]
+          format: date-time
+        status:
+          type: string
+          enum: [open, finalized]
+        notes:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventorySessionItem"
+        previousItems:
+          type: ["array", "null"]
+          description: Items from the immediately preceding finalized session for this store
+          items:
+            $ref: "#/components/schemas/InventorySessionItem"
+        usageSummary:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/UsageLine"
+        createdAt:
+          type: string
+          format: date-time
+
+    UsageLine:
+      type: object
+      required: [productId, productName, previousCount, received, currentCount, usage]
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: string
+        previousCount:
+          type: string
+        received:
+          type: string
+        currentCount:
+          type: string
+        usage:
+          type: string
+
+    # Receiving
+    ReceivingRecord:
+      type: object
+      required: [id, storeId, employeeId, receivedAt]
+      properties:
+        id:
+          type: integer
+        storeId:
+          type: ["integer", "null"]
+        warehouseId:
+          type: ["integer", "null"]
+        employeeId:
+          type: integer
+        vendor:
+          type: ["string", "null"]
+        invoiceNumber:
+          type: ["string", "null"]
+        poNumber:
+          type: ["string", "null"]
+        receivedAt:
+          type: string
+          format: date-time
+        notes:
+          type: ["string", "null"]
+        photoUrls:
+          type: ["array", "null"]
+          items:
+            type: string
+        signatureUrl:
+          type: ["string", "null"]
+        itemCount:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    ReceivingRecordItem:
+      type: object
+      required: [id, receivingRecordId, productId, quantityReceived]
+      properties:
+        id:
+          type: integer
+        receivingRecordId:
+          type: integer
+        productId:
+          type: integer
+        quantityReceived:
+          type: string
+        lotNumber:
+          type: ["string", "null"]
+        cost:
+          type: ["string", "null"]
+        expirationDate:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    ReceivingItemInput:
+      type: object
+      required: [productId, quantityReceived]
+      properties:
+        productId:
+          type: integer
+        quantityReceived:
+          type: string
+        lotNumber:
+          type: string
+        cost:
+          type: string
+        expirationDate:
+          type: string
+
+    ReceivingRecordInput:
+      type: object
+      required: [items]
+      properties:
+        storeId:
+          type: ["integer", "null"]
+        warehouseId:
+          type: integer
+        vendor:
+          type: string
+        invoiceNumber:
+          type: string
+        poNumber:
+          type: string
+        notes:
+          type: string
+        photoUrls:
+          type: array
+          items:
+            type: string
+        signatureUrl:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReceivingItemInput"
+
+    ReceivingRecordDetail:
+      type: object
+      required: [id, storeId, employeeId, receivedAt, items]
+      properties:
+        id:
+          type: integer
+        storeId:
+          type: ["integer", "null"]
+        warehouseId:
+          type: ["integer", "null"]
+        employeeId:
+          type: integer
+        vendor:
+          type: ["string", "null"]
+        invoiceNumber:
+          type: ["string", "null"]
+        poNumber:
+          type: ["string", "null"]
+        receivedAt:
+          type: string
+          format: date-time
+        notes:
+          type: ["string", "null"]
+        photoUrls:
+          type: ["array", "null"]
+          items:
+            type: string
+        signatureUrl:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReceivingRecordItem"
+        createdAt:
+          type: string
+          format: date-time
+
+    # Chemical Usage
+    ChemicalUsage:
+      type: object
+      required: [id, storeId, employeeId, productId, amountPulled, status, pulledAt]
+      properties:
+        id:
+          type: integer
+        storeId:
+          type: integer
+        employeeId:
+          type: integer
+        productId:
+          type: integer
+        amountPulled:
+          type: string
+        reason:
+          type: ["string", "null"]
+        equipment:
+          type: ["string", "null"]
+        vehicleTunnel:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
+        comments:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, consumed, returned]
+        pulledAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    ChemicalUsageInput:
+      type: object
+      required: [storeId, productId, amountPulled]
+      properties:
+        storeId:
+          type: integer
+        productId:
+          type: integer
+        amountPulled:
+          type: string
+        reason:
+          type: string
+        equipment:
+          type: string
+        vehicleTunnel:
+          type: string
+        location:
+          type: string
+        comments:
+          type: string
+
+    ChemicalUsageUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, consumed, returned]
+        comments:
+          type: string
+
+    # Reports
+    UsageReportLine:
+      type: object
+      required: [productId, productName, totalUsage, unit]
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: string
+        categoryId:
+          type: ["integer", "null"]
+        categoryName:
+          type: ["string", "null"]
+        storeId:
+          type: ["integer", "null"]
+        storeName:
+          type: ["string", "null"]
+        totalUsage:
+          type: string
+        unit:
+          type: ["string", "null"]
+        totalCost:
+          type: ["string", "null"]
+        sessionCount:
+          type: integer
+
+    UsageReport:
+      type: object
+      required: [lines, period, startDate, endDate]
+      properties:
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsageReportLine"
+        period:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        totalCost:
+          type: ["string", "null"]
+
+    InventoryValuationLine:
+      type: object
+      required: [productId, productName, currentQuantity, unitCost, totalValue]
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: string
+        storeId:
+          type: ["integer", "null"]
+        storeName:
+          type: ["string", "null"]
+        warehouseId:
+          type: ["integer", "null"]
+        warehouseName:
+          type: ["string", "null"]
+        currentQuantity:
+          type: string
+        unit:
+          type: ["string", "null"]
+        unitCost:
+          type: ["string", "null"]
+        totalValue:
+          type: string
+
+    InventoryValuationReport:
+      type: object
+      required: [lines, grandTotal]
+      properties:
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryValuationLine"
+        grandTotal:
+          type: string
+
+    StockAlert:
+      type: object
+      required: [productId, productName, storeName, currentLevel, threshold]
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: string
+        storeId:
+          type: ["integer", "null"]
+        storeName:
+          type: string
+        warehouseId:
+          type: ["integer", "null"]
+        warehouseName:
+          type: ["string", "null"]
+        currentLevel:
+          type: string
+        threshold:
+          type: string
+        unit:
+          type: ["string", "null"]
+        lastCountDate:
+          type: ["string", "null"]
+          format: date-time
+
+    TopConsumerProduct:
+      type: object
+      required: [productId, productName, totalUsage]
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: string
+        categoryName:
+          type: ["string", "null"]
+        totalUsage:
+          type: string
+        unit:
+          type: ["string", "null"]
+        totalCost:
+          type: ["string", "null"]
+
+    TopConsumersReport:
+      type: object
+      required: [topProducts, topStores]
+      properties:
+        topProducts:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopConsumerProduct"
+        topStores:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoreRanking"
+
+    StoreRanking:
+      type: object
+      required: [storeId, storeName, totalUsage, rank]
+      properties:
+        storeId:
+          type: integer
+        storeName:
+          type: string
+        storeNumber:
+          type: string
+        totalUsage:
+          type: string
+        totalCost:
+          type: ["string", "null"]
+        sessionCount:
+          type: integer
+        rank:
+          type: integer
+
+    # AI
+    AiConfig:
+      type: object
+      required: [id, provider, systemPrompt, hasApiKey]
+      properties:
+        id:
+          type: integer
+        provider:
+          type: string
+          enum: [openai, grok]
+        systemPrompt:
+          type: string
+        hasApiKey:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+
+    AiConfigInput:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [openai, grok]
+        systemPrompt:
+          type: string
+        apiKey:
+          type: string
+          description: Set a new API key (never returned in GET)
+
+    AiChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, system]
+        content:
+          type: string
+
+    AiChatInput:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiChatMessage"
+        storeId:
+          type: ["integer", "null"]
+          description: Optional store context for inventory-aware responses
+
+    AiReply:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        usage:
+          type: object
+          properties:
+            promptTokens:
+              type: integer
+            completionTokens:
+              type: integer
+            totalTokens:
+              type: integer
+
+    AiTestInput:
+      type: object
+      properties:
+        provider:
+          type: string
+          enum: [openai, grok]
+        apiKey:
+          type: string
+          description: The key to test — if omitted, the stored key is used
+
+    AiTestResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        provider:
+          type: string
+          description: Friendly provider name, present on success
+        error:
+          type: string
+          description: Error message, present on failure
+
+    AiReportInput:
+      type: object
+      properties:
+        query:
+          type: string
+        reportType:
+          type: string
+        storeId:
+          type: integer
+        days:
+          type: integer
+          minimum: 7
+          maximum: 365
+
+    AiReportResponse:
+      type: object
+      required: [title, overview, keyFindings, anomalies, recommendations, risks, confidence, dataQuality, generatedAt, periodDays, storeCount, sessionCount, alertCount]
+      properties:
+        title:
+          type: string
+        overview:
+          type: string
+        keyFindings:
+          type: array
+          items:
+            type: string
+        anomalies:
+          type: array
+          items:
+            type: string
+        recommendations:
+          type: array
+          items:
+            type: string
+        risks:
+          type: array
+          items:
+            type: string
+        confidence:
+          type: number
+        dataQuality:
+          type: string
+          enum: [complete, partial, insufficient]
+        dataQualityNote:
+          type: ["string", "null"]
+        generatedAt:
+          type: string
+          format: date-time
+        periodDays:
+          type: integer
+        storeCount:
+          type: integer
+        sessionCount:
+          type: integer
+        alertCount:
+          type: integer
+
+    # Dashboard
+    DashboardSummary:
+      type: object
+      required: [storesTotal, storesPendingInventory, itemsBelowMinimum, recentSessions, topChemicals, recentReceiving]
+      properties:
+        storesTotal:
+          type: integer
+        storesPendingInventory:
+          type: integer
+        itemsBelowMinimum:
+          type: integer
+        itemsOverstocked:
+          type: integer
+        totalInventoryValue:
+          type: ["string", "null"]
+        recentSessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventorySession"
+        topChemicals:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopConsumerProduct"
+        recentReceiving:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReceivingRecord"
+        activeChemicalPulls:
+          type: integer
+
+    # Audit Log
+    AuditLog:
+      type: object
+      required: [id, action, createdAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: ["integer", "null"]
+        storeId:
+          type: ["integer", "null"]
+        action:
+          type: string
+        entityType:
+          type: ["string", "null"]
+        entityId:
+          type: ["integer", "null"]
+        oldValues:
+          description: Previous state
+        newValues:
+          description: New state
+        ipAddress:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time

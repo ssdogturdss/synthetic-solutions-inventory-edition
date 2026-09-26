@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly encrypted inventory database backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+RandomizedDelaySec=30min
+Persistent=true
+Unit=inventory-backup.service
+
+[Install]
+WantedBy=timers.target

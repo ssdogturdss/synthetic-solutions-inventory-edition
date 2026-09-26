@@ -1,0 +1,27 @@
+# Copy this file to /etc/nginx/sites-available/inventory-api and replace
+# api.example.com with the DNS name pointing at this Ubuntu server.
+#
+# Keep PostgreSQL private. Only ports 80 and 443 should be exposed publicly.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.example.com;
+
+    client_max_body_size 20m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Required for the AI chat SSE stream and long report generations.
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+    }
+}

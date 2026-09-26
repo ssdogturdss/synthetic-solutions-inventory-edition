@@ -1,0 +1,24 @@
+[Unit]
+Description=Encrypted inventory database backup
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+OnFailure=inventory-backup-alert@inventory-backup.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/inventory-backup.env
+ExecStart=/usr/local/libexec/inventory-backup
+RuntimeDirectory=inventory-backup
+RuntimeDirectoryMode=0700
+TimeoutStartSec=30min
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal
