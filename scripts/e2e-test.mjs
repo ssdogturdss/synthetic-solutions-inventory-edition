@@ -1630,9 +1630,11 @@ async function testAiChat() {
   r = await req('GET', '/ai/config', null, adminToken);
   check('GET /ai/config admin access', r.status === 200, `status=${r.status} hasApiKey=${r.data?.hasApiKey}`);
   const originalAiConfig = {
+    id: r.data?.id,
     hasApiKey: r.data?.hasApiKey,
     provider: r.data?.provider,
     systemPrompt: r.data?.systemPrompt,
+    updatedAt: r.data?.updatedAt,
   };
 
   // 7d: non-admin blocked from AI config
@@ -1653,7 +1655,7 @@ async function testAiChat() {
     const { promisify } = await import('node:util');
     const { fileURLToPath } = await import('node:url');
     const { dirname, join } = await import('node:path');
-    const { existsSync, mkdtempSync, rmSync } = await import('node:fs');
+    const { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
     const execFileAsync = promisify(execFile);
     const scriptsDir = dirname(fileURLToPath(import.meta.url));
@@ -1662,9 +1664,12 @@ async function testAiChat() {
     const restoreScript = join(scriptsDir, 'restore-ai-config.ts');
     const snapshotDir = mkdtempSync(join(tmpdir(), 'e2e-ai-stream-'));
     const snapshotFile = join(snapshotDir, 'ai-config-snapshot.json');
+    const emptySnapshotFile = join(snapshotDir, 'empty-ai-config-snapshot.json');
     let snapshotReady = false;
+    let emptySnapshotReady = false;
     let testRowId = 0;
     let forcedRestoreFailureObserved = false;
+    let defaultAiConfig = null;
     const controlledStreamingFailure = new Error(
       'controlled streaming-check failure after temporary AI config setup',
     );
@@ -1673,6 +1678,39 @@ async function testAiChat() {
     try {
       await execFileAsync(tsx, [snapshotScript, snapshotFile]);
       snapshotReady = true;
+
+      // Preserve the real starting state, then remove its row by exact ID so
+      // this streaming cleanup check starts from a genuinely empty config.
+      writeFileSync(emptySnapshotFile, JSON.stringify({ exists: false, row: null }), 'utf8');
+      const originalSnapshot = JSON.parse(readFileSync(snapshotFile, 'utf8'));
+      if (originalSnapshot.exists && originalSnapshot.row?.id) {
+        await execFileAsync(
+          tsx,
+          [restoreScript, emptySnapshotFile, String(originalSnapshot.row.id)],
+        );
+      }
+      await execFileAsync(tsx, [snapshotScript, emptySnapshotFile]);
+      emptySnapshotReady = true;
+      const emptySnapshot = JSON.parse(readFileSync(emptySnapshotFile, 'utf8'));
+      const configBeforeStreamingSetup = await req('GET', '/ai/config', null, adminToken);
+      defaultAiConfig = configBeforeStreamingSetup.data;
+      check(
+        'Streaming endpoint: no AI config row exists before temporary setup',
+        emptySnapshot.exists === false &&
+          emptySnapshot.row === null &&
+          configBeforeStreamingSetup.status === 200 &&
+          configBeforeStreamingSetup.data?.id === 0,
+        `snapshotExists=${emptySnapshot.exists} adminStatus=${configBeforeStreamingSetup.status} adminId=${configBeforeStreamingSetup.data?.id}`,
+      );
+      check(
+        'Streaming endpoint: empty config exposes built-in admin defaults before setup',
+        configBeforeStreamingSetup.status === 200 &&
+          configBeforeStreamingSetup.data?.provider === 'openai' &&
+          typeof configBeforeStreamingSetup.data?.systemPrompt === 'string' &&
+          configBeforeStreamingSetup.data.systemPrompt.length > 0 &&
+          configBeforeStreamingSetup.data?.hasApiKey === false,
+        `provider=${configBeforeStreamingSetup.data?.provider} promptPresent=${typeof configBeforeStreamingSetup.data?.systemPrompt === 'string' && configBeforeStreamingSetup.data.systemPrompt.length > 0} hasApiKey=${configBeforeStreamingSetup.data?.hasApiKey}`,
+      );
 
       // Seed a known configured row for the disconnect checks.  The key is sent
       // through the normal encrypted config endpoint and is never returned,
@@ -1905,37 +1943,33 @@ async function testAiChat() {
         );
       }
     } finally {
-      try {
-        if (snapshotReady) {
-          try {
-            await execFileAsync(tsx, [restoreScript, snapshotFile, String(testRowId)]);
-            pass('Streaming endpoint: restored original AI configuration');
-          } catch (restoreErr) {
-            fail(
-              'Streaming endpoint: failed to restore original AI configuration',
-              restoreErr?.message?.slice(0, 150) ?? String(restoreErr),
-            );
-          }
-
-          // The real restore above leaves the database safe before this
-          // deliberate failure.  The missing file exercises the failure branch
-          // without leaving the temporary encrypted test key behind.
-          try {
-            await execFileAsync(
-              tsx,
-              [restoreScript, join(snapshotDir, 'missing-ai-config-snapshot.json'), String(testRowId)],
-            );
-            fail('Streaming endpoint: forced restore failure unexpectedly succeeded');
-          } catch (forcedRestoreErr) {
-            forcedRestoreFailureObserved = true;
-            pass(
-              'Streaming endpoint: forced restore failure was reported before snapshot cleanup',
-              forcedRestoreErr?.message?.slice(0, 150) ?? String(forcedRestoreErr),
-            );
-          }
+      if (emptySnapshotReady) {
+        try {
+          await execFileAsync(tsx, [restoreScript, emptySnapshotFile, String(testRowId)]);
+          pass('Streaming endpoint: removed temporary AI config and restored empty state');
+        } catch (restoreErr) {
+          fail(
+            'Streaming endpoint: failed to restore empty AI configuration',
+            restoreErr?.message?.slice(0, 150) ?? String(restoreErr),
+          );
         }
-      } finally {
-        rmSync(snapshotDir, { recursive: true, force: true });
+
+        // The real restore above leaves the database safe before this
+        // deliberate failure.  The missing file exercises the failure branch
+        // without leaving the temporary encrypted test key behind.
+        try {
+          await execFileAsync(
+            tsx,
+            [restoreScript, join(snapshotDir, 'missing-ai-config-snapshot.json'), String(testRowId)],
+          );
+          fail('Streaming endpoint: forced restore failure unexpectedly succeeded');
+        } catch (forcedRestoreErr) {
+          forcedRestoreFailureObserved = true;
+          pass(
+            'Streaming endpoint: forced restore failure was reported before snapshot cleanup',
+            forcedRestoreErr?.message?.slice(0, 150) ?? String(forcedRestoreErr),
+          );
+        }
       }
     }
 
@@ -1945,8 +1979,85 @@ async function testAiChat() {
     );
     check(
       'Streaming endpoint: forced restore failure exercised cleanup handling',
-      snapshotReady && forcedRestoreFailureObserved,
+      emptySnapshotReady && forcedRestoreFailureObserved,
     );
+    try {
+      const configAfterFailedStreamingCheck = await req('GET', '/ai/config', null, adminToken);
+      check(
+        'Streaming endpoint: temporary AI config row is gone after failed-check cleanup',
+        configAfterFailedStreamingCheck.status === 200 &&
+          configAfterFailedStreamingCheck.data?.id === 0,
+        `status=${configAfterFailedStreamingCheck.status} id=${configAfterFailedStreamingCheck.data?.id}`,
+      );
+      check(
+        'Streaming endpoint: default masked API key state restored after failure',
+        configAfterFailedStreamingCheck.status === 200 &&
+          configAfterFailedStreamingCheck.data?.hasApiKey === false &&
+          configAfterFailedStreamingCheck.data?.hasApiKey === defaultAiConfig?.hasApiKey,
+        `expectedDefault=${defaultAiConfig?.hasApiKey} actual=${configAfterFailedStreamingCheck.data?.hasApiKey}`,
+      );
+      check(
+        'Streaming endpoint: default provider restored after failure',
+        configAfterFailedStreamingCheck.status === 200 &&
+          configAfterFailedStreamingCheck.data?.provider === 'openai' &&
+          configAfterFailedStreamingCheck.data?.provider === defaultAiConfig?.provider,
+        `expectedDefault=${defaultAiConfig?.provider} actual=${configAfterFailedStreamingCheck.data?.provider}`,
+      );
+      check(
+        'Streaming endpoint: default prompt restored after failure',
+        configAfterFailedStreamingCheck.status === 200 &&
+          typeof defaultAiConfig?.systemPrompt === 'string' &&
+          configAfterFailedStreamingCheck.data?.systemPrompt === defaultAiConfig.systemPrompt,
+        `promptMatchesDefault=${configAfterFailedStreamingCheck.data?.systemPrompt === defaultAiConfig?.systemPrompt}`,
+      );
+    } finally {
+      try {
+        if (snapshotReady) {
+          await execFileAsync(tsx, [restoreScript, snapshotFile, String(testRowId)]);
+          pass('Streaming endpoint: restored original AI configuration');
+          const configAfterOriginalRestore = await req('GET', '/ai/config', null, adminToken);
+          check(
+            'Streaming endpoint: original AI config row identity restored',
+            configAfterOriginalRestore.status === 200 &&
+              configAfterOriginalRestore.data?.id === originalAiConfig.id,
+            `expected=${originalAiConfig.id} actual=${configAfterOriginalRestore.data?.id}`,
+          );
+          check(
+            'Streaming endpoint: original masked API key state restored',
+            configAfterOriginalRestore.status === 200 &&
+              configAfterOriginalRestore.data?.hasApiKey === originalAiConfig.hasApiKey,
+            `expected=${originalAiConfig.hasApiKey} actual=${configAfterOriginalRestore.data?.hasApiKey}`,
+          );
+          check(
+            'Streaming endpoint: original provider restored',
+            configAfterOriginalRestore.status === 200 &&
+              configAfterOriginalRestore.data?.provider === originalAiConfig.provider,
+            `expected=${originalAiConfig.provider} actual=${configAfterOriginalRestore.data?.provider}`,
+          );
+          check(
+            'Streaming endpoint: original prompt restored',
+            configAfterOriginalRestore.status === 200 &&
+              configAfterOriginalRestore.data?.systemPrompt === originalAiConfig.systemPrompt,
+            `promptMatchesOriginal=${configAfterOriginalRestore.data?.systemPrompt === originalAiConfig.systemPrompt}`,
+          );
+          check(
+            'Streaming endpoint: original config update time restored',
+            configAfterOriginalRestore.status === 200 &&
+              (originalAiConfig.id === 0 ||
+                configAfterOriginalRestore.data?.updatedAt === originalAiConfig.updatedAt),
+            `expected=${originalAiConfig.updatedAt} actual=${configAfterOriginalRestore.data?.updatedAt}`,
+          );
+        }
+      } catch (restoreErr) {
+        fail(
+          'Streaming endpoint: failed to restore original AI configuration',
+          restoreErr?.message?.slice(0, 150) ?? String(restoreErr),
+        );
+      } finally {
+        rmSync(snapshotDir, { recursive: true, force: true });
+      }
+    }
+
     check(
       'Streaming endpoint: temporary snapshot file removed after restore failure',
       !existsSync(snapshotFile),
@@ -1956,25 +2067,6 @@ async function testAiChat() {
       'Streaming endpoint: temporary snapshot directory removed after restore failure',
       !existsSync(snapshotDir),
       `exists=${existsSync(snapshotDir)}`,
-    );
-    const configAfterFailedStreamingCheck = await req('GET', '/ai/config', null, adminToken);
-    check(
-      'Streaming endpoint: original masked API key state restored after failure',
-      configAfterFailedStreamingCheck.status === 200 &&
-        configAfterFailedStreamingCheck.data?.hasApiKey === originalAiConfig.hasApiKey,
-      `expected=${originalAiConfig.hasApiKey} actual=${configAfterFailedStreamingCheck.data?.hasApiKey}`,
-    );
-    check(
-      'Streaming endpoint: original provider restored after failure',
-      configAfterFailedStreamingCheck.status === 200 &&
-        configAfterFailedStreamingCheck.data?.provider === originalAiConfig.provider,
-      `expected=${originalAiConfig.provider} actual=${configAfterFailedStreamingCheck.data?.provider}`,
-    );
-    check(
-      'Streaming endpoint: original prompt restored after failure',
-      configAfterFailedStreamingCheck.status === 200 &&
-        configAfterFailedStreamingCheck.data?.systemPrompt === originalAiConfig.systemPrompt,
-      `expectedPrompt=${JSON.stringify(originalAiConfig.systemPrompt)} actualPrompt=${JSON.stringify(configAfterFailedStreamingCheck.data?.systemPrompt)}`,
     );
   }
 

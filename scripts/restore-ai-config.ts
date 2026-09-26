@@ -11,7 +11,7 @@
  * Restoration rules:
  *   - Original had no row → DELETE WHERE id = <test-row-id> (only the test row)
  *   - Original had a row  → UPDATE WHERE id = <original-row-id>, restoring all
- *                           fields (provider, systemPrompt, apiKeyEncrypted)
+ *                           fields and re-insert the original ID if it was removed.
  */
 import { readFileSync } from 'node:fs';
 import { db, pool } from '@workspace/db';
@@ -28,7 +28,14 @@ try {
   } else {
     const snapshot = JSON.parse(readFileSync(snapshotFile, 'utf8')) as {
       exists: boolean;
-      row: { id: number; provider: string; systemPrompt: string; apiKeyEncrypted: string | null } | null;
+      row: {
+        id: number;
+        provider: string;
+        systemPrompt: string;
+        apiKeyEncrypted: string | null;
+        createdAt?: string;
+        updatedAt?: string;
+      } | null;
     };
 
     if (!snapshot.exists || !snapshot.row) {
@@ -45,17 +52,28 @@ try {
       }
     } else {
       const { id, provider, systemPrompt, apiKeyEncrypted } = snapshot.row;
+      const createdAt = snapshot.row.createdAt ? new Date(snapshot.row.createdAt) : undefined;
+      const updatedAt = snapshot.row.updatedAt ? new Date(snapshot.row.updatedAt) : undefined;
       const updated = await db.update(aiConfigTable)
-        .set({ provider: provider as 'openai' | 'grok', systemPrompt, apiKeyEncrypted })
+        .set({
+          provider: provider as 'openai' | 'grok',
+          systemPrompt,
+          apiKeyEncrypted,
+          ...(createdAt ? { createdAt } : {}),
+          ...(updatedAt ? { updatedAt } : {}),
+        })
         .where(eq(aiConfigTable.id, id))
         .returning({ id: aiConfigTable.id });
 
       if (updated.length === 0) {
         // The original row was deleted during the test — re-insert with original values
         await db.insert(aiConfigTable).values({
+          id,
           provider: provider as 'openai' | 'grok',
           systemPrompt,
           apiKeyEncrypted: apiKeyEncrypted ?? undefined,
+          ...(createdAt ? { createdAt } : {}),
+          ...(updatedAt ? { updatedAt } : {}),
         });
         console.log(`Re-inserted original ai_config row (id=${id} was missing)`);
       } else {

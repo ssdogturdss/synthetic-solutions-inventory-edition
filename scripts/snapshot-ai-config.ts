@@ -20,7 +20,17 @@ try {
     const [row] = await db.select().from(aiConfigTable).limit(1);
 
     const snapshot = row
-      ? { exists: true, row: { id: row.id, provider: row.provider, systemPrompt: row.systemPrompt, apiKeyEncrypted: row.apiKeyEncrypted ?? null } }
+      ? {
+          exists: true,
+          row: {
+            id: row.id,
+            provider: row.provider,
+            systemPrompt: row.systemPrompt,
+            apiKeyEncrypted: row.apiKeyEncrypted ?? null,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+          },
+        }
       : { exists: false, row: null };
 
     writeFileSync(outFile, JSON.stringify(snapshot, null, 2), 'utf8');
