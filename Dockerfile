@@ -18,6 +18,7 @@ WORKDIR /workspace
 # package.json / lockfile changes, not when source changes).
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY tsconfig.base.json tsconfig.json ./
+COPY patches ./patches
 COPY artifacts/api-server/package.json ./artifacts/api-server/package.json
 COPY lib/db/package.json               ./lib/db/package.json
 COPY lib/api-zod/package.json          ./lib/api-zod/package.json
